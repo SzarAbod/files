@@ -2,12 +2,13 @@
 <html>
 
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://unpkg.com/pdf-lib"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
-            padding: 30px;
+            padding: 15px;
             background-color: #f4f7f6;
             color: #333;
         }
@@ -17,9 +18,9 @@
             max-width: 800px;
             margin: 0 auto;
             background: #ffffff;
-            padding: 30px;
+            padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
         }
 
         label {
@@ -41,14 +42,15 @@
         }
 
         button {
-            padding: 10px 20px;
-            margin-right: 10px;
+            padding: 10px 15px;
+            margin-right: 5px;
             margin-top: 15px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
             font-weight: bold;
             transition: background-color 0.3s ease;
+            white-space: nowrap;
         }
 
         #startButton {
@@ -69,6 +71,18 @@
         #downloadButton:hover {
             background-color: #0056b3;
         }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .button-group button {
+            flex-grow: 1;
+            margin: 0;
+        }
+
 
         #linkSelection {
             margin-top: 25px;
@@ -116,6 +130,9 @@
             background-color: #ffc107;
             color: #333;
             margin: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         #downloadArea button:hover {
@@ -129,7 +146,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.9);
             border-radius: 12px;
             justify-content: center;
             align-items: center;
@@ -167,10 +184,17 @@
 
 <body>
     <div class="container">
+        <div id="loadingOverlay">
+            <div class="spinner"></div>
+            <div id="loadingText">جار التحميل...</div>
+        </div>
+
         <div id="downloadArea">
             <h3>تم الانتهاء</h3>
-            <button onclick="triggerDownload('unsolved')">تحميل الملف الغير محلول</button>
-            <button onclick="triggerDownload('solved')">تحميل الملف المحلول</button>
+            <div class="button-group">
+                <button onclick="triggerDownload('unsolved')">تحميل الملف الغير محلول</button>
+                <button onclick="triggerDownload('solved')">تحميل الملف المحلول</button>
+            </div>
         </div>
 
         <label for="subjectName">اسم المادة:</label>
@@ -180,19 +204,16 @@
         <input type="text" id="courseUrl">
         <br>
 
-        <button id="startButton" onclick="startScraping()">بدا البحث</button>
-        <button id="downloadButton" onclick="processSelectedLinks()">تحميل الملفات</button>
+        <div class="button-group">
+            <button id="startButton" onclick="startScraping()">بدأ البحث</button>
+            <button id="downloadButton" onclick="processSelectedLinks()"> تحميل الملفات المحددة</button>
+        </div>
 
         <div id="linkSelection">
-            <p>ادخل اسم المادة ثم الرابط واضغط على "بدا البحث" لبدا البحث</p>
+            <p>ادخل اسم المادة ثم الرابط واضغط على "بدأ البحث" للبدا</p>
         </div>
 
         <pre id="log" style="display: none;"></pre>
-
-        <div id="loadingOverlay">
-            <div class="spinner"></div>
-            <div id="loadingText">جار التحميل...</div>
-        </div>
     </div>
 
     <script>
@@ -230,19 +251,16 @@
                 } catch (error) {
                     lastError = error;
                     if (attempt < MAX_RETRIES) {
+                        logToHidden(`(${attempt}/${MAX_RETRIES}) محاولة فاشلة لـ: ${url.substring(0, 40)}... إعادة المحاولة بعد ${RETRY_DELAY_MS} مللي ثانية.`);
                         await delay(RETRY_DELAY_MS);
                     }
                 }
             }
-            throw new Error(`Failed after ${MAX_RETRIES} attempts: ${lastError.message}`);
         }
 
         async function _fetchHtml(url) {
             const proxyUrl = "https://corsproxy.io/?url=" + encodeURIComponent(url);
             const response = await fetch(proxyUrl);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
             const text = await response.text();
             return new DOMParser().parseFromString(text, "text/html");
         }
@@ -252,9 +270,6 @@
         async function _downloadPdf(url) {
             const proxyUrl = "https://corsproxy.io/?url=" + encodeURIComponent(url);
             const res = await fetch(proxyUrl);
-            if (!res.ok) {
-                throw new Error(`HTTP error! status: ${res.status}`);
-            }
             return await res.arrayBuffer();
         }
 
@@ -278,11 +293,6 @@
         function triggerDownload(type) {
             const subjectName = document.getElementById('subjectName').value.trim();
 
-            if (!subjectName) {
-                alert("ادخل اسم المادة");
-                return;
-            }
-
             let bytes;
             let filenameSuffix;
 
@@ -297,12 +307,9 @@
             }
 
             if (bytes) {
-                // Remove any characters that are illegal or problematic in filenames
                 const cleanSubjectName = subjectName.replace(/[\\/:*?"<>|]/g, '-');
                 const filename = `${cleanSubjectName} ${filenameSuffix}.pdf`;
                 downloadBlob(bytes, filename);
-            } else {
-                alert(`No ${type} PDF data found or ready.`);
             }
         }
 
@@ -326,10 +333,8 @@
             const downloadPromises = validUrls.map(async (url) => {
                 try {
                     const data = await downloadPdf(url);
-                    logToHidden(`Download success: ${url.substring(0, 30)}...`);
                     return data;
                 } catch (error) {
-                    logToHidden(`Download failed: ${url.substring(0, 30)}... Error: ${error.message}`);
                     return null;
                 }
             });
@@ -343,16 +348,12 @@
             }
 
             const mergedPdf = await PDFLib.PDFDocument.create();
-            logToHidden(`Merging ${successfulBuffers.length} PDFs...`);
 
             for (const buffer of successfulBuffers) {
-                try {
-                    const pdf = await PDFLib.PDFDocument.load(buffer);
-                    const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-                    pages.forEach(p => mergedPdf.addPage(p));
-                } catch (error) {
-                    logToHidden(`Error loading PDF buffer: ${error.message}`);
-                }
+                const pdf = await PDFLib.PDFDocument.load(buffer);
+                const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                pages.forEach(p => mergedPdf.addPage(p));
+
             }
             return await mergedPdf.save();
         }
@@ -384,38 +385,22 @@
             solvedPdfBytes = null;
             document.getElementById("downloadArea").style.display = "none";
             document.getElementById("downloadButton").style.display = "none";
-            document.getElementById("linkSelection").innerHTML = "<p>Scanning course page...</p>";
 
             const url = document.getElementById("courseUrl").value;
             const subjectName = document.getElementById('subjectName').value.trim();
 
-            if (!url) {
-                alert("ادخل الرابط");
-                return;
-            }
-            if (!subjectName) {
-                alert("ادخل اسم المادة");
-                return;
-            }
-
             setLoading(true, "يتم البحث...");
 
-            try {
-                const mainDoc = await fetchHtml(url);
+            const mainDoc = await fetchHtml(url);
 
-                lessonLinks = [...mainDoc.querySelectorAll(".tutor-course-topic-item a")];
+            lessonLinks = [...mainDoc.querySelectorAll(".tutor-course-topic-item a")];
 
-                if (lessonLinks.length === 0) {
-                    document.getElementById("linkSelection").innerHTML = "<p>فشل البحث</p>";
-                    setLoading(false);
-                    return;
-                }
-
-                selectLinks(lessonLinks);
-
-            } catch (error) {
-                alert(`Failed to fetch course page: ${error.message}`);
+            if (lessonLinks.length === 0) {
+                setLoading(false);
+                return;
             }
+
+            selectLinks(lessonLinks);
             setLoading(false);
         }
 
@@ -430,11 +415,10 @@
 
             if (selectedIndices.length === 0) {
                 document.getElementById("downloadButton").disabled = false;
-                alert("اختار اسبوع واحد على الاقل للمتابعة");
                 return;
             }
 
-            setLoading(true, `جار التحميل...`);
+            setLoading(true, "جار التحميل...");
 
             const linksToProcess = selectedIndices.map(index => lessonLinks[index]);
 
@@ -443,16 +427,12 @@
 
             const extractionPromises = linksToProcess.map(async (link) => {
                 const lessonUrl = link.href;
-                try {
-                    const doc = await fetchHtml(lessonUrl);
-                    return {
-                        unsolved: extractUnsolvedPDF(doc),
-                        solved: extractSolvedPDF(doc)
-                    };
-                } catch (error) {
-                    logToHidden(`Failed to process lesson page: ${link.textContent.trim()}: ${error.message}`);
-                    return { unsolved: null, solved: null };
-                }
+                const doc = await fetchHtml(lessonUrl);
+                return {
+                    unsolved: extractUnsolvedPDF(doc),
+                    solved: extractSolvedPDF(doc)
+                };
+
             });
 
             const results = await Promise.all(extractionPromises);
@@ -468,8 +448,6 @@
 
             if (unsolvedPdfBytes || solvedPdfBytes) {
                 document.getElementById("downloadArea").style.display = "block";
-            } else {
-                alert("Processing failed. No PDF data was successfully merged.");
             }
 
             document.getElementById("downloadButton").disabled = false;
